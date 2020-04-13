@@ -140,7 +140,7 @@ bool
 page_out (struct page *p) 
 {
   bool dirty;
-  bool ok = false;
+  bool success = false;
 
   ASSERT (p->frame != NULL);
   ASSERT (lock_held_by_current_thread (&p->frame->lock));
@@ -158,12 +158,12 @@ page_out (struct page *p)
 
   if (!dirty)
   {
-	ok = true;
+	success = true;
   }
 
   if(p->file == NULL)
   {
-	ok = swap_out(p);
+	success = swap_out(p);
   }
   else
   {
@@ -171,21 +171,21 @@ page_out (struct page *p)
 	{
 		if (p->private)
 		{
-  		  ok = swap_out(p);
+  		  success = swap_out(p);
 		}
 		else
 		{
-		  ok = file_write_at(p->file, (const void *) p->frame->base, p->file_bytes, p->file_offset);
+		  success = file_write_at(p->file, (const void *) p->frame->base, p->file_bytes, p->file_offset);
 		}
 	}
   }
 
-  if (ok)
+  if (success)
   {
 	p->frame = NULL;
   }
 
-  return ok;
+  return success;
 }
 
 /* Returns true if page P's data has been accessed recently,
