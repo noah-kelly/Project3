@@ -8,9 +8,9 @@
 
 >> Fill in the names of your group members.
 
-FirstName LastName
-FirstName LastName
-FirstName LastName
+Matthew James jamesmmatt@ksu.edu
+Mowen Sun <mowens@ksu.edu>
+Noah Kelly <noahk@ksu.edu>
 
 ---- PRELIMINARIES ----
 
@@ -21,6 +21,10 @@ FirstName LastName
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
 
+https://github.com/ChristianJHughes/pintos-project3
+https://github.com/cctv2206/Pintos-project-3
+https://github.com/wookayin/pintos
+
 			PAGE TABLE MANAGEMENT
 			=====================
 
@@ -29,10 +33,24 @@ FirstName LastName
 >> A1: In a few paragraphs, describe the existing code for locating the
 >> frame, if any, that contains the data of a given page.
 
+Pages contain a struct which houses the frame pointer (page->frame) for that page's data.  This pointer depicts the virtual address that the data is stored. 
+This is determined upon a page_in (first action in do_page_in) through the frame_alloc_and_lock(page *) call which sets the page's
+frame pointer to the result, and that frame's owner to the given page.
+
+frame_alloc_and_lock makes 3 attempts to allocate a frame, sleeping between each attempt.  Each attempt it must acquire scan_lock in order to search the frame table, then it first checks for a free frame.
+If there is no free frame it then tries to find a frame to evict.  Then the result depends on whether or not the page can be paged out.  If after 3 attempts it is unable to allocate a frame, it returns NULL
+which indicates a failure to allocate a frame.
+
 ---- SYNCHRONIZATION ----
 
 >> A2: When two user processes both need a new frame at the same time,
 >> how are races avoided?
+
+Any search of the frame table must first acquire the scan_lock, this avoids multiple processes to search for a frame at the same time.
+Also, prior to getting a frame, frame_lock is called which requires that the frame's individual lock to be acquired.  Then we install the frame into the page before releasing the lock.  This ensures
+that only 1 page will be installing a frame at any given time.
+These 2 locks together help ensure that races will be avoided during frame allocation.
+
 
 		       PAGING TO AND FROM DISK
 		       =======================
@@ -42,9 +60,18 @@ FirstName LastName
 >> B1: When a frame is required but none is free, some frame must be
 >> evicted.  Describe the algorithm used to choose a frame to evict.
 
+Choosing which frame to evict occurs in the try_frame_alloc_and_lock method in frame.c.  For every frame we attempt to acquire its lock.  If it's lock is available, we check if it has a page which owns it.  If not,
+we assign it our page and then return the frame as the allocated frame.  Otherwise, we check if it was recently accessed.  If so, we release the lock on the frame but do not use it.  If it was not recently accessed,
+we page_out the frame's page and then return the frame.  If the page_out fails, we return NULL since we failed to acquire the frame then defer to the frame_alloc_and_lock method since we will only attempt this 3 times.
+The cycle repeats (if no frame is available still) until we've made 3 attempts or a frame is allocated.
+
 >> B2: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+
+We check if the address is within the stack (using the PHYS_BASE and STACK_MAX preset values) and if the thread is accessing valid space for the PUSHA command (within 32 bytes).
+If both of these are true, we allocate a new page on the stack using page_allocate and return the new page.
+
 
 			 MEMORY MAPPED FILES
 			 ===================
@@ -55,14 +82,26 @@ FirstName LastName
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+N/A
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
 
+Memory mapped files are contained in mappings which hold the memory space and file associated to the memory.
+Threads also contain a list of mappings associated to the thread.
+
+Page eviction is handled in the page_out function.  For all pages, we first mark the page not present in the page table and check if the page is dirty.  Then we check if the page has a file associated with it.
+If not (no file associated), we swap out the page and return the result of the swap.  Otherwise the page is memory mapped and we must check whether or not to update based on if the page is dirty.
+
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+
+When sys_mmap is called, it calls page_allocate in order to allocate all of the file's data to pages.  If at any point in this process the page is unable to allocate, the mapping is immediately unmapped and it returns
+-1 to indicate that it is not mapped.  The page allocation can fail when malloc (sizeof *p) is called in page_allocate, which enforces that there must be enough room for the page to be allocated.  This will return NULL
+and then sys_mmap checks if each page is NULL and in that case executes the unmapping of what has been mapped so far.
 
 ---- RATIONALE ----
 
@@ -72,6 +111,11 @@ FirstName LastName
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
+Our implementation shares much of the code for different mappings.  The primary difference occurs in the page_out function where depending on whether or not it is memory mapped, we page out differently.
+Regardless of type, we track the success of paging out the given page.  It differs when there is no place in memory associated with the page, which then forces us to swap out the page.  When there is a file in memory,
+we make sure to write it out if it needs updating.  Then we converge in implementation again and based on the success of the page_out, regardless of type, indicate the page's frame pointer as NULL and return the success
+of the page_out (swap_out success if we swapped, otherwise the writing success).
 
 			   SURVEY QUESTIONS
 			   ================
@@ -87,6 +131,8 @@ the quarter.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
+I feel like answering the questions in the design document helped me understand how the systems we did not have to work on, operate.  If these questions did not exist, I would spend much less time on the unedited files.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
